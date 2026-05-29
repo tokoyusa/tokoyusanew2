@@ -1,0 +1,5 @@
+{
+  "name": "Remix: DigitalStorePro",
+  "description": "Toko online produk digital dengan panel admin, integrasi Supabase, dan sistem pembayaran lengkap (Pakasir, Tripay, QRIS, Manual).",
+  "requestFramePermissions": []
+}

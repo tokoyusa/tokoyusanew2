@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#3b82f6" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" id="apple-touch-icon" href="/logo.png" />
+    <link rel="icon" id="favicon" href="/favicon.ico" />
+    <title>Digital Store</title>
+    <script>
+      // Remote log reporter to send browser errors & logs to our server-side file '/server.log'
+      (function() {
+        // Prevent extension crash due to read-only fetch getter in sandboxed iframe environments
+        try {
+          let currentFetch = window.fetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() { return currentFetch; },
+            set: function(val) { currentFetch = val; },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {}
+
+        const sendRemoteLog = (type, args, err) => {
+          try {
+            const message = Array.from(args).map(arg => {
+              if (typeof arg === 'object') {
+                try { return JSON.stringify(arg); } catch (e) { return String(arg); }
+              }
+              return String(arg);
+            }).join(' ');
+
+            fetch('/api/log', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: type,
+                message: message,
+                stack: err ? err.stack : undefined,
+                url: window.location.href,
+                userAgent: navigator.userAgent
+              })
+            }).catch(() => {});
+          } catch (e) {}
+        };
+
+        // Hook console methods
+        const originalLog = console.log;
+        const originalWarn = console.warn;
+        const originalError = console.error;
+
+        console.log = function() {
+          originalLog.apply(console, arguments);
+          sendRemoteLog('log', arguments);
+        };
+        console.warn = function() {
+          originalWarn.apply(console, arguments);
+          sendRemoteLog('warn', arguments);
+        };
+        console.error = function() {
+          originalError.apply(console, arguments);
+          sendRemoteLog('error', arguments);
+        };
+
+        // Fallback for sandboxed iframes preventing localStorage/sessionStorage access
+        let storageSupported = false;
+        try {
+          const testKey = '__storage_test__';
+          window.localStorage.setItem(testKey, testKey);
+          window.localStorage.removeItem(testKey);
+          storageSupported = true;
+        } catch (e) {
+          storageSupported = false;
+        }
+
+        if (!storageSupported) {
+          console.warn("localStorage/sessionStorage blocked or not supported in sandbox. Falling back to in-memory storage.");
+          function createInMemoryStorage() {
+            let store = {};
+            return {
+              getItem: function(key) {
+                return key in store ? store[key] : null;
+              },
+              setItem: function(key, value) {
+                store[key] = String(value);
+              },
+              removeItem: function(key) {
+                delete store[key];
+              },
+              clear: function() {
+                store = {};
+              },
+              key: function(index) {
+                const keys = Object.keys(store);
+                return keys[index] || null;
+              },
+              get length() {
+                return Object.keys(store).length;
+              }
+            };
+          }
+          try {
+            Object.defineProperty(window, 'localStorage', {
+              value: createInMemoryStorage(),
+              writable: true,
+              configurable: true
+            });
+          } catch (err) {}
+          try {
+            Object.defineProperty(window, 'sessionStorage', {
+              value: createInMemoryStorage(),
+              writable: true,
+              configurable: true
+            });
+          } catch (err) {}
+        }
+
+        // Setup global error capture
+        window.addEventListener('error', function(e) {
+          const err = e.error || new Error(e.message);
+          sendRemoteLog('error', ['Global error:', err.message], err);
+          
+          // Skip showing overlay for Chrome/browser extension-related or third-party/external errors
+          const isExtensionError = (err.stack && (
+            err.stack.indexOf('chrome-extension://') !== -1 ||
+            err.stack.indexOf('moz-extension://') !== -1 ||
+            err.stack.indexOf('extensions::') !== -1
+          )) || (e.filename && (
+            e.filename.indexOf('chrome-extension://') !== -1 ||
+            e.filename.indexOf('moz-extension://') !== -1
+          ));
+          const isFetchGetterError = err.message && (
+            err.message.indexOf('property fetch') !== -1 ||
+            err.message.indexOf('Cannot set property fetch') !== -1
+          );
+
+          if (!isExtensionError && !isFetchGetterError) {
+            showErrorOverlay(err);
+          }
+        });
+        window.addEventListener('unhandledrejection', function(e) {
+          const err = e.reason || new Error(e.reason ? e.reason.message : 'Unhandled promise rejection');
+          sendRemoteLog('error', ['Unhandled rejection:', err.message], err);
+          
+          // Skip showing overlay for Chrome/browser extension-related or third-party/external errors
+          const isExtensionError = err.stack && (
+            err.stack.indexOf('chrome-extension://') !== -1 ||
+            err.stack.indexOf('moz-extension://') !== -1 ||
+            err.stack.indexOf('extensions::') !== -1
+          );
+          const isFetchGetterError = err.message && (
+            err.message.indexOf('property fetch') !== -1 ||
+            err.message.indexOf('Cannot set property fetch') !== -1
+          );
+
+          if (!isExtensionError && !isFetchGetterError) {
+            showErrorOverlay(err);
+          }
+        });
+      })();
+
+      function showErrorOverlay(err) {
+        if (!err) return;
+        let overlay = document.getElementById('error-overlay');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'error-overlay';
+          overlay.style.position = 'fixed';
+          overlay.style.top = '0';
+          overlay.style.left = '0';
+          overlay.style.width = '100vw';
+          overlay.style.height = '100vh';
+          overlay.style.backgroundColor = 'rgba(15, 23, 42, 0.98)';
+          overlay.style.color = '#ef4444';
+          overlay.style.padding = '2rem';
+          overlay.style.zIndex = '999999';
+          overlay.style.fontFamily = 'monospace';
+          overlay.style.fontSize = '14px';
+          overlay.style.lineHeight = '1.6';
+          overlay.style.overflow = 'auto';
+          overlay.style.border = '5px solid #ef4444';
+          
+          if (document.body) {
+            document.body.appendChild(overlay);
+          } else {
+            (document.documentElement || document.head).appendChild(overlay);
+          }
+        }
+        overlay.innerHTML = '<h1 style="color: #f8fafc; font-size: 20px; font-weight: bold; margin-bottom: 1rem;">🚨 DATABASE ATAU LOGIKA CRASH (RUNTIME ERROR)</h1>' +
+          '<p style="color: #fca5a5; font-size: 15px;"><strong>Penyebab Utama:</strong> ' + err.message + '</p>' +
+          '<p style="color: #cbd5e1;"><strong>Komentar Detail / Stacktrace:</strong></p>' +
+          '<pre style="background:#020617; color:#f8fafc; padding:1rem; border-radius:4px; border:1px solid #ef4444; overflow:auto;">' + (err.stack || 'No stacktrace available') + '</pre>' +
+          '<p style="color: #94a3b8; font-size:12px; margin-top: 1rem;">Gunakan Supabase SQL Editor atau periksa file services/supabase.ts jika konfigurasi kredensial salah.</p>';
+      }
+
+      // De-register stale offline caching to bypass Chrome/Vite asset mismatches with sandbox safe triggers
+      try {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for (let registration of registrations) {
+              registration.unregister().then(() => console.log('Stale SW de-registered')).catch(()=>{});
+            }
+          }).catch(()=>{});
+        }
+      } catch (err) {
+        console.warn('ServiceWorker access restricted:', err);
+      }
+      try {
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (let name of names) {
+              caches.delete(name).then(() => console.log('Stale cache cleared:', name)).catch(()=>{});
+            }
+          }).catch(()=>{});
+        }
+      } catch (err) {
+        console.warn('Cache Storage access restricted:', err);
+      }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              primary: '#3b82f6',
+              secondary: '#64748b',
+              dark: '#0f172a',
+              darker: '#020617',
+              accent: '#f59e0b',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        background-color: #0f172a;
+        color: #f8fafc;
+      }
+      .no-scrollbar::-webkit-scrollbar {
+          display: none;
+      }
+      .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
