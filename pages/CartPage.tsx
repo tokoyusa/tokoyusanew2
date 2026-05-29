@@ -27,13 +27,8 @@ const CartPage: React.FC<CartPageProps> = ({ cart, removeFromCart, clearCart, us
     return (settings.payment_methods_active as any)[id] ?? true;
   };
 
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(() => {
-    if (isMethodActive('transfer')) return 'TRANSFER';
-    if (isMethodActive('ewallet')) return 'EWALLET';
-    if (isMethodActive('qris')) return 'QRIS';
-    if (isMethodActive('pakasir')) return 'PAKASIR';
-    return 'TRANSFER';
-  });
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | ''>('');
+  const [showPaymentWarning, setShowPaymentWarning] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string>(''); 
   const [processing, setProcessing] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
@@ -166,6 +161,11 @@ const CartPage: React.FC<CartPageProps> = ({ cart, removeFromCart, clearCart, us
   const handleCheckout = async () => {
     if (cart.length === 0) return;
     if (!supabase) return;
+
+    if (finalTotal > 0 && !selectedMethod) {
+      setShowPaymentWarning(true);
+      return;
+    }
 
     if (!user) {
         if (!guestName || !guestEmail || !guestPassword || !guestPhone) {
@@ -911,6 +911,28 @@ Mohon segera diproses. Terima kasih.`;
             </div>
         </div>
       </div>
+
+      {/* Payment Warning Modal */}
+      {showPaymentWarning && (
+        <div id="payment-warning-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center transform scale-95 scale-in animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-500/25">
+              <AlertTriangle size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Pemberitahuan</h3>
+            <p className="text-slate-300 text-sm mb-6 leading-relaxed">
+              Pilih Metode Pembayaran Dulu Ya Kak!
+            </p>
+            <button
+              id="confirm-payment-warning"
+              onClick={() => setShowPaymentWarning(false)}
+              className="w-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/95 hover:to-blue-700 text-white font-bold py-2.5 rounded-xl transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30 active:scale-95 text-sm"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
